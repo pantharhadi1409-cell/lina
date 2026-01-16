@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>J.A.R.V.I.S. | MARK 85 NANOTECH</title>
+    
+    <!-- High-Tech Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Rajdhani:wght@300;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <!-- TensorFlow & AI -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+    <style>
+        :root {
+            --c-core: #00f3ff;
+            --c-accent: #bc13fe;
+            --c-alert: #ff004c;
+            --c-dark: #020408;
+            --c-glass: rgba(0, 243, 255, 0.03);
+            --f-main: 'Rajdhani', sans-serif;
+            --f-title: 'Audiowide', cursive;
+            --f-code: 'Share Tech Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+        body {
+            background-color: var(--c-dark);
+            color: var(--c-core);
+            width: 100vw; height: 100vh; overflow: hidden;
+            font-family: var(--f-main);
+            perspective: 1200px; /* For 3D Tilt */
+        }
+
+        /* --- BACKGROUND FX --- */
+        #neural-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; opacity: 0.3; pointer-events: none;
+        }
+
+        /* --- LOGIN --- */
+        #auth-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 10000;
+            display: flex; justify-content: center; align-items: center;
+            flex-direction: column;
+        }
+
+        .lock-circle {
+            width: 150px; height: 150px; border: 2px solid var(--c-core);
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            position: relative; margin-bottom: 30px;
+            box-shadow: 0 0 30px var(--c-core), inset 0 0 30px var(--c-core);
+            animation: spin 10s linear infinite;
+        }
+        .lock-inner { font-size: 3rem; animation: pulse 2s infinite; }
+
+        .input-group { position: relative; margin-top: 20px; }
+        
+        .pass-input {
+            background: transparent; border: none; border-bottom: 2px solid var(--c-core);
+            color: var(--c-core); padding: 10px; width: 300px;
+            font-family: var(--f-title); font-size: 1.5rem; text-align: center;
+            outline: none; letter-spacing: 5px;
+            transition: 0.3s;
+        }
+        .pass-input:focus { border-color: var(--c-accent); box-shadow: 0 10px 20px -10px var(--c-accent); }
+
+        .btn-start {
+            margin-top: 30px; background: transparent; color: var(--c-core);
+            border: 1px solid var(--c-core); padding: 10px 40px;
+            font-family: var(--f-title); cursor: pointer; letter-spacing: 2px;
+            position: relative; overflow: hidden; transition: 0.3s;
+        }
+        .btn-start::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: var(--c-core); transition: 0.3s; z-index: -1;
+        }
+        .btn-start:hover::before { left: 0; }
+        .btn-start:hover { color: #000; box-shadow: 0 0 20px var(--c-core); }
+
+        /* --- MAIN 3D PLANE --- */
+        #app-layer {
+            position: relative; width: 100%; height: 100%;
+            transform-style: preserve-3d;
+            transform: rotateX(0deg); /* JS controls this */
+            transition: transform 0.1s ease-out;
+            opacity: 0; pointer-events: none; transition: opacity 1s, transform 0.1s;
+        }
+
+        /* Webcam */
+        #webcam {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            filter: grayscale(20%) contrast(1.1) brightness(0.7);
+            transform: translateZ(-100px); /* Push back */
+            z-index: 1;
+        }
+
+        /* AI Canvas */
+        #ai-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2; transform: translateZ(50px); pointer-events: none;
+        }
+
+        /* Overlay Grid */
+        .grid-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: 
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 3; pointer-events: none;
+            transform: translateZ(10px);
+        }
+
+        /* --- HUD COMPONENTS --- */
+        .hud-el { position: absolute; z-index: 10; }
+
+        /* Top Header */
+        .header-panel {
+            top: 20px; left: 50%; transform: translateX(-50%) translateZ(80px);
+            width: 80%; height: 60px;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0,243,255,0.2);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 20px;
+            clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%);
+        }
+        .status-light {
+            width: 10px; height: 10px; background: var(--c-core); border-radius: 50%;
+            box-shadow: 0 0 10px var(--c-core); margin-right: 10px; display: inline-block;
+        }
+        .status-light.active { background: #0f0; box-shadow: 0 0 10px #0f0; }
+
+        /* Chat Logs (Holographic Cards) */
+        .log-container {
+            bottom: 120px; left: 50%;
+            transform: translateX(-50%) translateZ(100px);
+            width: 90%; max-width: 800px; height: 250px;
+            display: flex; flex-direction: column; justify-content: flex-end;
+            overflow: hidden; padding: 10px;
+        }
+
+        .log-card {
+            background: rgba(0, 20, 30, 0.6);
+            border-left: 3px solid var(--c-core);
+            padding: 12px 20px; margin-bottom: 10px;
+            font-size: 1.1rem;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            animation: cardIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 90%;
+            word-wrap: break-word;
+        }
+        .log-card.user {
+            border-left: none; border-right: 3px solid var(--c-accent);
+            align-self: flex-end; background: rgba(40, 0, 60, 0.6);
+        }
+
+        /* Voice Controls */
+        .controls-deck {
+            bottom: 40px; left: 50%; transform: translateX(-50%) translateZ(120px);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        .arc-reactor {
+            width: 90px; height: 90px; border-radius: 50%;
+            position: relative; cursor: pointer; transition: 0.3s;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .r-ring {
+            position: absolute; width: 100%; height: 100%;
+            border: 2px dashed var(--c-core); border-radius: 50%;
+            animation: spin 20s linear infinite; opacity: 0.5;
+        }
+        .r-core {
+            width: 40%; height: 40%; background: var(--c-core); border-radius: 50%;
+            box-shadow: 0 0 30px var(--c-core);
+            transition: 0.3s;
+        }
+        .arc-reactor:hover .r-core { transform: scale(1.2); }
+        .arc-reactor.active .r-core { background: var(--c-alert); box-shadow: 0 0 50px var(--c-alert); animation: pulse 1s infinite; }
+
+        /* Audio Viz Canvas */
+        #audio-viz {
+            position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%);
+            width: 200px; height: 50px;
+            opacity: 0; transition: 0.3s;
+        }
+
+        /* Decor Elements */
+        .deco-corner {
+            position: absolute; width: 100px; height: 100px;
+            border: 2px solid transparent; z-index: 5;
+        }
+        .tl { top: 20px; left: 20px; border-top-color: var(--c-core); border-left-color: var(--c-core); }
+        .tr { top: 20px; right: 20px; border-top-color: var(--c-core); border-right-color: var(--c-core); }
+        .bl { bottom: 20px; left: 20px; border-bottom-color: var(--c-core); border-left-color: var(--c-core); }
+        .br { bottom: 20px; right: 20px; border-bottom-color: var(--c-core); border-right-color: var(--c-core); }
+
+        /* Boot Screen */
+        #boot-layer {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 500px; height: 300px; background: #000;
+            border: 1px solid var(--c-core); padding: 15px;
+            font-family: var(--f-code); color: var(--c-core);
+            display: none; z-index: 9000; box-shadow: 0 0 50px var(--c-core);
+        }
+
+        /* Keyframes */
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { opacity: 0.8; transform: scale(1); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.8; transform: scale(1); } }
+        @keyframes cardIn { from { transform: translateY(20px) rotateX(20deg); opacity: 0; } to { transform: translateY(0) rotateX(0); opacity: 1; } }
+
+    </style>
+</head>
+<body>
+
+    <!-- Neural Background -->
+    <canvas id="neural-canvas"></canvas>
+
+    <!-- 1. AUTH -->
+    <div id="auth-screen">
+        <div class="lock-circle">
+            <div class="lock-inner">🔒</div>
+        </div>
+        <h1 style="font-family: var(--f-title); letter-spacing: 5px; margin-bottom: 20px;">J.A.R.V.I.S.</h1>
+        <p style="color: #666; font-family: var(--f-code);">SECURE ACCESS REQUIRED</p>
+        <div class="input-group">
+            <input type="password" id="pwd" class="pass-input" placeholder="PASSCODE">
+        </div>
+        <button class="btn-start" onclick="unlock()">INITIALIZE</button>
+    </div>
+
+    <!-- 2. BOOT -->
+    <div id="boot-layer"></div>
+
+    <!-- 3. MAIN APP -->
+    <div id="app-layer">
+        <video id="webcam" playsinline muted autoplay></video>
+        <canvas id="ai-layer"></canvas>
+        <div class="grid-overlay"></div>
+
+        <!-- Corners -->
+        <div class="deco-corner tl"></div>
+        <div class="deco-corner tr"></div>
+        <div class="deco-corner bl"></div>
+        <div class="deco-corner br"></div>
+
+        <!-- Top HUD -->
+        <div class="hud-el header-panel">
+            <div style="display:flex; align-items:center;">
+                <div id="vision-status" class="status-light"></div>
+                <span style="font-family: var(--f-title); font-size: 1.2rem;">JARVIS V.85</span>
+            </div>
+            <div id="clock" style="font-family: var(--f-code); font-size: 1.2rem;">00:00:00</div>
+            <div style="font-family: var(--f-code); color: var(--c-accent);">CPU: 4%</div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="hud-el log-container" id="log-feed">
+            <!-- Messages go here -->
+        </div>
+
+        <!-- Audio Viz -->
+        <canvas id="audio-viz" width="200" height="50"></canvas>
+
+        <!-- Controls -->
+        <div class="hud-el controls-deck">
+            <div class="arc-reactor" id="mic-btn">
+                <div class="r-ring"></div>
+                <div class="r-core"></div>
+            </div>
+            <div style="margin-top:10px; font-size: 0.8rem; color:#666; letter-spacing:2px;">VOICE CONTROL</div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const PASS = "STARK";
+        const synth = window.speechSynthesis;
+        const video = document.getElementById('webcam');
+        const aiCanvas = document.getElementById('ai-layer');
+        const ctx = aiCanvas.getContext('2d');
+        const appLayer = document.getElementById('app-layer');
+        const micBtn = document.getElementById('mic-btn');
+        const vizCanvas = document.getElementById('audio-viz');
+        const vCtx = vizCanvas.getContext('2d');
+
+        let model = null;
+        let recognition = null;
+        let isListening = false;
+        let detectionActive = false;
+
+        // --- 1. AUDIO ENGINE (SYNTH) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'hover') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'detect') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'boot') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 1);
+                osc.start(now); osc.stop(now + 1);
+            }
+        }
+
+        // --- 2. NEURAL BACKGROUND FX ---
+        const nCanvas = document.getElementById('neural-canvas');
+        const nCtx = nCanvas.getContext('2d');
+        let nodes = [];
+        
+        function initNeural() {
+            nCanvas.width = window.innerWidth;
+            nCanvas.height = window.innerHeight;
+            nodes = [];
+            for(let i=0; i<60; i++) {
+                nodes.push({
+                    x: Math.random() * nCanvas.width,
+                    y: Math.random() * nCanvas.height,
+                    vx: (Math.random()-0.5) * 0.5,
+                    vy: (Math.random()-0.5) * 0.5
+                });
+            }
+            animateNeural();
+        }
+
+        function animateNeural() {
+            nCtx.clearRect(0,0,nCanvas.width, nCanvas.height);
+            nCtx.fillStyle = '#00f3ff';
+            nCtx.strokeStyle = 'rgba(0, 243, 255, 0.2)';
+            
+            nodes.forEach((node, i) => {
+                node.x += node.vx; node.y += node.vy;
+                if(node.x < 0 || node.x > nCanvas.width) node.vx *= -1;
+                if(node.y < 0 || node.y > nCanvas.height) node.vy *= -1;
+                
+                nCtx.beginPath();
+                nCtx.arc(node.x, node.y, 2, 0, Math.PI*2);
+                nCtx.fill();
+
+                // Connect nodes
+                nodes.forEach((node2, j) => {
+                    if(i !== j) {
+                        const dist = Math.hypot(node.x - node2.x, node.y - node2.y);
+                        if(dist < 150) {
+                            nCtx.beginPath();
+                            nCtx.moveTo(node.x, node.y);
+                            nCtx.lineTo(node2.x, node2.y);
+                            nCtx.stroke();
+                        }
+                    }
+                });
+            });
+            requestAnimationFrame(animateNeural);
+        }
+        initNeural();
+
+        // --- 3. UNLOCK & BOOT ---
+        function unlock() {
+            if(document.getElementById('pwd').value.toUpperCase() === PASS) {
+                document.getElementById('auth-screen').style.display = 'none';
+                const boot = document.getElementById('boot-layer');
+                boot.style.display = 'block';
+                playSound('boot');
+
+                const logs = [
+                    "> INITIALIZING KERNEL...",
+                    "> LOADING NEURAL NETS...",
+                    "> CONNECTING SATELLITE UPLINK...",
+                    "> AUTHORIZATION CONFIRMED.",
+                    "> SYSTEM ONLINE."
+                ];
+
+                let i=0;
+                const intv = setInterval(() => {
+                    boot.innerText += logs[i] + "\n";
+                    i++;
+                    if(i>=logs.length) {
+                        clearInterval(intv);
+                        setTimeout(() => {
+                            boot.style.display = 'none';
+                            appLayer.style.opacity = '1';
+                            appLayer.style.pointerEvents = 'all';
+                            startSystem();
+                        }, 800);
+                    }
+                }, 500);
+            }
+        }
+
+        // --- 4. SYSTEM START ---
+        async function startSystem() {
+            // Clock
+            setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+
+            // Camera
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+                video.srcObject = stream;
+            } catch(e) { log("Camera Error", "bot"); }
+
+            // AI Load
+            log("Loading Vision Modules...", "bot");
+            model = await cocoSsd.load();
+            detectionActive = true;
+            document.getElementById('vision-status').classList.add('active');
+            playSound('detect');
+            log("Vision Systems Active.", "bot");
+
+            detectLoop();
+            setupVoice();
+            speak("lina Mark 85 at your service.");
+
+            // Mouse Tilt Effect
+            document.addEventListener('mousemove', (e) => {
+                const x = (e.clientX / window.innerWidth - 0.5) * 5;
+                const y = (e.clientY / window.innerHeight - 0.5) * -5;
+                appLayer.style.transform = `rotateX(${y}deg) rotateY(${x}deg)`;
+            });
+        }
+
+        // --- 5. ADVANCED VISION LOOP ---
+        function detectLoop() {
+            if(model && video.readyState === 4) {
+                // Resize canvas strictly
+                aiCanvas.width = video.videoWidth;
+                aiCanvas.height = video.videoHeight;
+                ctx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
+
+                model.detect(video).then(predictions => {
+                    predictions.forEach(p => {
+                        const [x, y, w, h] = p.bbox;
+                        
+                        // Draw Advanced Reticle
+                        ctx.strokeStyle = '#00f3ff';
+                        ctx.lineWidth = 4;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = '#00f3ff';
+                        
+                        // Rotating Corners
+                        const time = Date.now() / 500;
+                        const offset = Math.sin(time) * 5;
+                        
+                        // Corners
+                        ctx.beginPath();
+                        // TL
+                        ctx.moveTo(x, y + 20 + offset); ctx.lineTo(x, y); ctx.lineTo(x + 20 + offset, y);
+                        // TR
+                        ctx.moveTo(x + w - 20 - offset, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + 20 + offset);
+                        // BR
+                        ctx.moveTo(x + w, y + h - 20 - offset); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - 20 - offset, y + h);
+                        // BL
+                        ctx.moveTo(x + 20 + offset, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - 20 - offset);
+                        ctx.stroke();
+
+                        // Label
+                        ctx.fillStyle = '#00f3ff';
+                        ctx.font = 'bold 18px Audiowide';
+                        ctx.fillText(p.class.toUpperCase(), x, y - 10);
+                        
+                        // Center Lock
+                        const cx = x + w/2;
+                        const cy = y + h/2;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 5, 0, Math.PI*2);
+                        ctx.fillStyle = '#ff004c';
+                        ctx.fill();
+                        
+                        // Locking lines
+                        ctx.beginPath();
+                        ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+                        ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+                        ctx.strokeStyle = 'rgba(255, 0, 76, 0.5)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    });
+                });
+            }
+            requestAnimationFrame(detectLoop);
+        }
+
+        // --- 6. VOICE & LOGIC ---
+        function setupVoice() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false; recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    isListening = true;
+                    micBtn.classList.add('active');
+                    vizCanvas.style.opacity = 1;
+                    vizLoop(true);
+                };
+                recognition.onend = () => {
+                    isListening = false;
+                    micBtn.classList.remove('active');
+                    vizCanvas.style.opacity = 0;
+                    vizLoop(false);
+                };
+                recognition.onresult = (e) => {
+                    const txt = e.results[0][0].transcript;
+                    log(txt, "user");
+                    think(txt);
+                };
+                micBtn.onclick = () => { if(!isListening) recognition.start(); playSound('hover'); };
+            }
+        }
+
+        function think(input) {
+            const t = input.toLowerCase();
+            let ans = "";
+            
+            if(t.includes("calculate") || t.includes("plus") || t.includes("times")) {
+                let m = t.replace("calculate","").replace("plus","+").replace("minus","-").replace("times","*").replace(/[^0-9\.\+\-\*\/]/g, "");
+                try { ans = `Calculated: ${eval(m)}.`; } catch { ans = "Math Error."; }
+            } else if(t.includes("time")) ans = `Current time: ${new Date().toLocaleTimeString()}.`;
+            else if(t.includes("detect") || t.includes("see")) ans = "Scanning perimeter... Targets identified.";
+            else if(t.includes("who are you")) ans = "I am J.A.R.V.I.S. Mark Eighty-Five.";
+            else if(t.includes("joke")) ans = "Why was the JavaScript developer sad? Because he didn't Node how to Express himself.";
+            else ans = "I am listening. Please specify instruction.";
+
+            log(ans, "bot");
+            speak(ans);
+        }
+
+        function log(txt, role) {
+            const div = document.createElement('div');
+            div.className = `log-card ${role}`;
+            div.innerHTML = role === 'bot' ? `<strong>JARVIS:</strong> ${txt}` : txt;
+            const container = document.getElementById('log-feed');
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function speak(txt) {
+            if(synth.speaking) return;
+            const u = new SpeechSynthesisUtterance(txt);
+            u.voice = synth.getVoices().find(v => v.name.includes('Google US English')) || synth.getVoices()[0];
+            u.rate = 1; u.pitch = 0.8;
+            synth.speak(u);
+        }
+
+        // --- 7. AUDIO VISUALIZER (SIMULATED FOR UI FEEL) ---
+        function vizLoop(active) {
+            if(!active) return;
+            vCtx.clearRect(0,0,200,50);
+            const w = 200 / 20;
+            for(let i=0; i<20; i++) {
+                const h = Math.random() * 40;
+                vCtx.fillStyle = '#00f3ff';
+                vCtx.fillRect(i*w, 50-h, w-2, h);
+            }
+            requestAnimationFrame(() => vizLoop(active));
+        }
+        
+        // Hover sounds
+        document.querySelectorAll('button').forEach(b => b.addEventListener('mouseenter', () => playSound('hover')));
+
+    </script>
+</body>
+</html>
